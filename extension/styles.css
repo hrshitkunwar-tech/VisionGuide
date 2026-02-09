@@ -1,0 +1,60 @@
+
+#vision-guide-overlay {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 320px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  border: 1px solid #e2e8f0;
+  z-index: 2147483647; /* Max z-index */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  animation: vg-slide-up 0.3s ease-out;
+}
+
+@keyframes vg-slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.vg-header {
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+}
+
+.vg-icon { margin-right: 8px; font-size: 16px; }
+.vg-title { font-weight: 600; color: #1e293b; font-size: 14px; flex-grow: 1; }
+.vg-close { 
+  background: none; border: none; cursor: pointer; color: #94a3b8; font-size: 20px; 
+  padding: 0; line-height: 1; 
+}
+
+.vg-content {
+  padding: 16px;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Highlighting */
+.vg-highlight {
+  position: relative;
+  transition: box-shadow 0.3s ease;
+}
+
+.vg-style-pulse {
+  outline: 3px solid #6366f1;
+  border-radius: 4px;
+  animation: vg-pulse-highlight 2s infinite;
+}
+
+@keyframes vg-pulse-highlight {
+  0% { outline-offset: 0px; outline-color: rgba(99, 102, 241, 0.8); }
+  50% { outline-offset: 6px; outline-color: rgba(99, 102, 241, 0); }
+  100% { outline-offset: 0px; outline-color: rgba(99, 102, 241, 0.8); }
+}

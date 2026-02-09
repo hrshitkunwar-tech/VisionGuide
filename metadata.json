@@ -1,0 +1,8 @@
+{
+  "name": "VisionGuide Dashboard",
+  "description": "A dashboard to manage and monitor screen-aware procedural guidance sessions, including captured screenshots and generated guidance events.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
