@@ -1,20 +1,50 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# VisionGuide
 
-# Run and deploy your AI Studio app
+Screenshot-grounded UI guidance prototype with a live session dashboard and extension export flow.
 
-This contains everything you need to run your app locally.
+## What It Is
 
-View your app in AI Studio: https://ai.studio/apps/drive/10F-0GCCvEuw4FqdsrXGW_YMdYzEwywgn
+VisionGuide explores a simple but powerful workflow:
 
-## Run Locally
+1. capture what a user is seeing
+2. store screenshots and guidance events
+3. replay the session in a dashboard
+4. generate extension packaging for in-browser assistance
 
-**Prerequisites:**  Node.js
+The project combines a React dashboard, a browser extension surface, and a lightweight backend so guidance can move between observation and action.
 
+## Current State
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Prototype. The dashboard, extension plumbing, realtime session view, and export utilities are in place. The product story is stronger than the polish, but the repo clearly shows the direction.
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Dashboard | React 19 + Vite + TypeScript |
+| Icons / UI | Lucide React |
+| Data layer | Supabase |
+| Backend | Express |
+| Extension | Chrome extension scripts in TypeScript |
+| Packaging | JSZip + FileSaver |
+
+## What To Look At
+
+- `App.tsx` for the operator dashboard experience
+- `extension/` for browser guidance logic and overlay behavior
+- `server/` for the lightweight backend hooks
+- `types.ts` for the shared session and guidance event model
+
+## Local Setup
+
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Provide the relevant Supabase and Gemini credentials in `.env.local`.
+
+## Why This Repo Matters
+
+This repo shows product taste in a useful direction: not just chatting with an AI, but giving the AI enough session context to guide someone through an interface with visual specificity.
