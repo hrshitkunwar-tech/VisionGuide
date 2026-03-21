@@ -1,5 +1,8 @@
 # VisionGuide
 
+> 🧪 **Part of The Navigator Lab Ecosystem**
+> This repository is a core experimental component of the broader [Navigator Lab](https://github.com/hrshitkunwar-tech/NewCodexWay) research initiative, mapping screenshot-grounded UI analysis into the Universal Perception engine.
+
 Screenshot-grounded UI guidance prototype with a live session dashboard and extension export flow.
 
 ## What It Is
