@@ -3,22 +3,22 @@
 > 🧪 **Part of The Navigator Lab Ecosystem**
 > This repository is a core experimental component of the broader [Navigator Lab](https://github.com/hrshitkunwar-tech/NewCodexWay) research initiative, mapping screenshot-grounded UI analysis into the Universal Perception engine.
 
-Screenshot-grounded UI guidance prototype with a live session dashboard and extension export flow.
+Screenshot-grounded UI guidance prototype with a live session dashboard, structured reasoning timeline, and extension export flow.
 
 ## What It Is
 
 VisionGuide explores a simple but powerful workflow:
 
 1. capture what a user is seeing
-2. store screenshots and guidance events
-3. replay the session in a dashboard
+2. store screenshots, reasoning events, and guidance packets
+3. replay the session in a dashboard with live Reasoning & State telemetry
 4. generate extension packaging for in-browser assistance
 
 The project combines a React dashboard, a browser extension surface, and a lightweight backend so guidance can move between observation and action.
 
 ## Current State
 
-Prototype. The dashboard, extension plumbing, realtime session view, and export utilities are in place. The product story is stronger than the polish, but the repo clearly shows the direction.
+Prototype, now aimed squarely at the Navigator Lab hackathon story. The dashboard, extension plumbing, realtime session view, and export utilities are in place, and the latest pass adds a structured reasoning timeline so judges can watch the agent state evolve in realtime.
 
 ## Stack
 
@@ -36,7 +36,8 @@ Prototype. The dashboard, extension plumbing, realtime session view, and export 
 - `App.tsx` for the operator dashboard experience
 - `extension/` for browser guidance logic and overlay behavior
 - `server/` for the lightweight backend hooks
-- `types.ts` for the shared session and guidance event model
+- `types.ts` for the shared session, guidance, and reasoning event model
+- `schema.sql` for the Supabase `reasoning_events` table used by the live timeline
 
 ## Local Setup
 
@@ -48,6 +49,8 @@ npm run dev
 
 Provide the relevant Supabase and Gemini credentials in `.env.local`.
 
+If you want the full structured timeline instead of the synthetic fallback feed, apply [`schema.sql`](./schema.sql) to your Supabase project and enable realtime for `reasoning_events`.
+
 ## Why This Repo Matters
 
-This repo shows product taste in a useful direction: not just chatting with an AI, but giving the AI enough session context to guide someone through an interface with visual specificity.
+This repo is the clearest visual demo inside Navigator Lab. It makes the agent legible: what the model saw, what state it entered, what it decided, and what artifact it produced next.

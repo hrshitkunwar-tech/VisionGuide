@@ -24,6 +24,45 @@ export interface GuidanceEvent {
   created_at: string;
 }
 
+export type ReasoningActor =
+  | 'perception'
+  | 'planner'
+  | 'matcher'
+  | 'outreach'
+  | 'scheduler'
+  | 'executor';
+
+export type ReasoningStage =
+  | 'capture'
+  | 'analyze'
+  | 'rank'
+  | 'draft'
+  | 'negotiate'
+  | 'submit'
+  | 'verify'
+  | 'respond';
+
+export type ReasoningStatus =
+  | 'queued'
+  | 'running'
+  | 'blocked'
+  | 'completed'
+  | 'failed';
+
+export interface ReasoningEvent {
+  id: string;
+  session_id: string;
+  actor: ReasoningActor;
+  stage: ReasoningStage;
+  status: ReasoningStatus;
+  summary: string;
+  details?: Record<string, unknown> | null;
+  confidence?: number | null;
+  latency_ms?: number | null;
+  artifact_ref?: string | null;
+  created_at: string;
+}
+
 export interface GuidanceResponse {
   overlay: {
     text: string;

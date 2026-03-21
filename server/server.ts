@@ -3,7 +3,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import { createClient } from '@supabase/supabase-js';
-import { ScreenshotPayload, GuidanceResponse } from '../types';
+import { ScreenshotPayload, GuidanceResponse, ReasoningActor, ReasoningStage, ReasoningStatus } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { ServerLogger, LogLevel } from './logger';
 // Fix for: Cannot find name 'Buffer'. Explicitly importing it from the buffer module.
@@ -14,6 +14,7 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 const CONTEXT = 'SERVER_ROOT';
+let reasoningTableWarningShown = false;
 
 // Initialize Supabase
 const supabase = createClient(
@@ -33,6 +34,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunction) => {
   const payload: ScreenshotPayload = req.body;
   const requestId = uuidv4();
+  const requestStartedAt = Date.now();
 
   try {
     if (!payload.session_id || !payload.image?.base64) {
@@ -41,6 +43,18 @@ app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunctio
     }
 
     ServerLogger.log(LogLevel.INFO, 'API_HANDLER', `Processing perception for ${payload.session_id}`, { requestId });
+    await emitReasoningEvent(payload.session_id, {
+      actor: 'perception',
+      stage: 'capture',
+      status: 'queued',
+      summary: 'Screenshot payload accepted by the perception loop.',
+      details: {
+        requestId,
+        page_url: payload.page.url,
+        page_title: payload.page.title,
+      },
+      artifact_ref: requestId,
+    });
 
     // 1. Persist/Update Session
     await supabase.from('sessions').upsert({
@@ -48,6 +62,17 @@ app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunctio
       last_seen_at: new Date().toISOString(),
       user_agent: req.headers['user-agent']
     }, { onConflict: 'session_id' });
+    await emitReasoningEvent(payload.session_id, {
+      actor: 'perception',
+      stage: 'analyze',
+      status: 'running',
+      summary: 'Session context refreshed and ready for screenshot analysis.',
+      details: {
+        requestId,
+        user_agent: req.headers['user-agent'],
+      },
+      artifact_ref: requestId,
+    });
 
     // 2. Upload Image to Supabase Storage
     // Using Buffer.from to convert base64 image data. Buffer is now imported from 'buffer'.
@@ -62,6 +87,17 @@ app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunctio
       });
 
     if (uploadError) throw uploadError;
+    await emitReasoningEvent(payload.session_id, {
+      actor: 'executor',
+      stage: 'submit',
+      status: 'completed',
+      summary: 'Frame persisted to storage for replay and artifact review.',
+      details: {
+        requestId,
+        file_name: fileName,
+      },
+      artifact_ref: fileName,
+    });
 
     // 3. Get Public URL
     const { data: { publicUrl } } = supabase.storage
@@ -77,9 +113,61 @@ app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunctio
       page_title: payload.page.title,
       captured_at: new Date().toISOString()
     });
+    await emitReasoningEvent(payload.session_id, {
+      actor: 'planner',
+      stage: 'analyze',
+      status: 'running',
+      summary: 'Model inference started against the latest captured frame.',
+      details: {
+        requestId,
+        image_url: publicUrl,
+      },
+      artifact_ref: publicUrl,
+    });
 
     // 5. Get AI Guidance
     const guidance = await getGeminiGuidance(payload, requestId);
+    await emitReasoningEvent(payload.session_id, {
+      actor: 'planner',
+      stage: 'draft',
+      status: 'completed',
+      summary: 'Guidance candidate generated from the screenshot and page context.',
+      details: {
+        requestId,
+        instruction: guidance.overlay.text,
+      },
+      confidence: 0.84,
+      latency_ms: Date.now() - requestStartedAt,
+      artifact_ref: requestId,
+    });
+    if (guidance.overlay.highlight?.textMatch) {
+      await emitReasoningEvent(payload.session_id, {
+        actor: 'executor',
+        stage: 'verify',
+        status: 'completed',
+        summary: `Highlight target resolved for "${guidance.overlay.highlight.textMatch}".`,
+        details: {
+          requestId,
+          highlight: guidance.overlay.highlight,
+        },
+        confidence: 0.78,
+        artifact_ref: guidance.overlay.highlight.textMatch,
+      });
+    }
+    if (guidance.voice?.text) {
+      await emitReasoningEvent(payload.session_id, {
+        actor: 'planner',
+        stage: 'respond',
+        status: 'completed',
+        summary: 'Voice guidance prepared for hands-free playback.',
+        details: {
+          requestId,
+          voice_text: guidance.voice.text,
+        },
+        confidence: 0.8,
+        artifact_ref: requestId,
+      });
+    }
 
     // 6. Save Guidance Event
     await supabase.from('guidance_events').insert({
@@ -90,9 +178,34 @@ app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunctio
       voice_text: guidance.voice?.text,
       created_at: new Date().toISOString()
     });
+    await emitReasoningEvent(payload.session_id, {
+      actor: 'executor',
+      stage: 'respond',
+      status: 'completed',
+      summary: 'Guidance delivered back to the operator dashboard and extension overlay.',
+      details: {
+        requestId,
+        delivered_at: new Date().toISOString(),
+      },
+      confidence: 0.91,
+      latency_ms: Date.now() - requestStartedAt,
+      artifact_ref: requestId,
+    });
 
     return res.status(200).json(guidance);
   } catch (error: any) {
+    await emitReasoningEvent(payload.session_id, {
+      actor: 'planner',
+      stage: 'respond',
+      status: 'failed',
+      summary: 'Perception loop failed before a final guidance response was delivered.',
+      details: {
+        requestId,
+        error: error.message,
+      },
+      latency_ms: Date.now() - requestStartedAt,
+      artifact_ref: requestId,
+    });
     ServerLogger.log(LogLevel.ERROR, 'API_HANDLER', 'Perception loop failed', { 
       requestId, 
       error: error.message 
@@ -177,6 +290,52 @@ async function getGeminiGuidance(payload: ScreenshotPayload, requestId: string):
   // Accessing response.text directly (property, not a method).
   const jsonStr = response.text?.trim() || '{}';
   return JSON.parse(jsonStr);
+}
+
+type ReasoningInsert = {
+  actor: ReasoningActor;
+  stage: ReasoningStage;
+  status: ReasoningStatus;
+  summary: string;
+  details?: Record<string, unknown>;
+  confidence?: number;
+  latency_ms?: number;
+  artifact_ref?: string;
+};
+
+async function emitReasoningEvent(sessionId: string, event: ReasoningInsert) {
+  if (!sessionId) {
+    return;
+  }
+
+  const payload = {
+    id: uuidv4(),
+    session_id: sessionId,
+    actor: event.actor,
+    stage: event.stage,
+    status: event.status,
+    summary: event.summary,
+    details: event.details ?? null,
+    confidence: event.confidence ?? null,
+    latency_ms: event.latency_ms ?? null,
+    artifact_ref: event.artifact_ref ?? null,
+    created_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from('reasoning_events').insert(payload);
+  if (!error) {
+    return;
+  }
+
+  if (!reasoningTableWarningShown) {
+    reasoningTableWarningShown = true;
+    ServerLogger.log(
+      LogLevel.WARN,
+      'REASONING_EVENTS',
+      'reasoning_events table is unavailable; continuing without structured reasoning persistence',
+      { error: error.message }
+    );
+  }
 }
 
 const PORT = 3000;
