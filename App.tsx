@@ -14,7 +14,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { GuidanceEvent, ReasoningEvent, Screenshot, Session } from './types';
+import { GuidanceEvent, ReasoningActor, ReasoningEvent, ReasoningStage, ReasoningStatus, Screenshot, Session } from './types';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
@@ -76,25 +76,31 @@ const STATUS_CLASSES: Record<string, string> = {
 
 const buildSyntheticReasoningEvents = (guidance: GuidanceEvent[], screenshots: Screenshot[]): ReasoningEvent[] =>
   guidance
-    .map((item, index) => ({
-      id: `synthetic-${item.id}`,
-      session_id: item.session_id,
-      actor: index % 2 === 0 ? 'planner' : 'executor',
-      stage: index % 2 === 0 ? 'draft' : 'respond',
-      status: 'completed',
-      summary: index % 2 === 0
-        ? 'Guidance draft synthesized from the latest captured frame.'
-        : 'Guidance delivered back to the dashboard and overlay.',
-      details: {
-        instruction: item.instruction,
-        voice_text: item.voice_text,
-        screenshot_id: screenshots[index]?.id ?? null,
-      },
-      confidence: 0.72,
-      latency_ms: null,
-      artifact_ref: screenshots[index]?.image_url ?? null,
-      created_at: item.created_at,
-    }))
+    .map((item, index) => {
+      const actor: ReasoningActor = index % 2 === 0 ? 'planner' : 'executor';
+      const stage: ReasoningStage = index % 2 === 0 ? 'draft' : 'respond';
+      const status: ReasoningStatus = 'completed';
+
+      return {
+        id: `synthetic-${item.id}`,
+        session_id: item.session_id,
+        actor,
+        stage,
+        status,
+        summary: index % 2 === 0
+          ? 'Guidance draft synthesized from the latest captured frame.'
+          : 'Guidance delivered back to the dashboard and overlay.',
+        details: {
+          instruction: item.instruction,
+          voice_text: item.voice_text,
+          screenshot_id: screenshots[index]?.id ?? null,
+        },
+        confidence: 0.72,
+        latency_ms: null,
+        artifact_ref: screenshots[index]?.image_url ?? null,
+        created_at: item.created_at,
+      };
+    })
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
 const formatLabel = (value: string | undefined, mapping: Record<string, string>) => {

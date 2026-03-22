@@ -115,14 +115,14 @@ on conflict (id) do nothing;
 
 ```bash
 npm run dev
-# → http://localhost:3000
+# → http://localhost:5173
 ```
 
 ### 5. Start the backend (separate terminal)
 
 ```bash
 npx ts-node server/server.ts
-# → http://localhost:4000
+# → http://localhost:3000
 ```
 
 ### 6. Load the Chrome extension
