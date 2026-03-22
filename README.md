@@ -9,6 +9,8 @@ Screenshot-grounded UI guidance — captures what the user sees, routes it throu
 3. Gemini vision analyzes the screenshot and generates structured guidance
 4. The React dashboard replays the full session in real-time: screenshots, guidance, and a reasoning timeline with confidence scores per Gemini call
 
+![VisionGuide Dashboard](./dashboard-screenshot.png)
+
 ## Stack
 
 | Layer       | Technology                        |
