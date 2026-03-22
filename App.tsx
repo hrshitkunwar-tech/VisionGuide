@@ -16,10 +16,27 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { GuidanceEvent, ReasoningEvent, Screenshot, Session } from './types';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || '',
-  process.env.SUPABASE_ANON_KEY || ''
-);
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+
+// Guard: @supabase/supabase-js v2 throws synchronously if the URL is empty.
+// When no credentials are provided the app boots in demo/synthetic mode —
+// the existing fallback path in fetchSessionDetails handles this gracefully.
+const supabase = SUPABASE_URL
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : {
+      from: () => ({
+        select: () => ({ order: () => ({ data: [], error: null }) }),
+        upsert: () => ({ data: null, error: null }),
+        insert: () => ({ data: null, error: null }),
+      }),
+      channel: () => ({
+        on: function () { return this; },
+        subscribe: () => ({ unsubscribe: () => {} }),
+      }),
+      removeChannel: () => {},
+      storage: { from: () => ({ upload: async () => ({ error: null }), getPublicUrl: () => ({ data: { publicUrl: '' } }) }) },
+    } as any;
 
 type DashboardTab = 'guidance' | 'reasoning' | 'artifacts';
 
