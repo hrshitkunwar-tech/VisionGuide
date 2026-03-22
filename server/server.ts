@@ -1,6 +1,7 @@
-
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { createClient } from '@supabase/supabase-js';
 import { ScreenshotPayload, GuidanceResponse, ReasoningActor, ReasoningStage, ReasoningStatus } from '../types';
@@ -8,6 +9,34 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ServerLogger, LogLevel } from './logger';
 // Fix for: Cannot find name 'Buffer'. Explicitly importing it from the buffer module.
 import { Buffer } from 'buffer';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, '..');
+
+function loadEnvFile(fileName: string) {
+  const envPath = path.join(projectRoot, fileName);
+  if (!fs.existsSync(envPath)) return;
+
+  const content = fs.readFileSync(envPath, 'utf8');
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    const separatorIndex = line.indexOf('=');
+    if (separatorIndex === -1) continue;
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim().replace(/^['"]|['"]$/g, '');
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadEnvFile('.env.local');
+loadEnvFile('.env');
 
 const app = express();
 app.use(cors());
@@ -26,6 +55,14 @@ const supabase = createClient(
 // Always use process.env.API_KEY directly as per guidelines. 
 // Do not define a local constant or request key management UI.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+function logPersistenceWarning(step: string, error: unknown, requestId: string) {
+  const message = error instanceof Error ? error.message : String(error);
+  ServerLogger.log(LogLevel.WARN, 'SUPABASE_PERSISTENCE', `${step} failed; continuing in degraded mode`, {
+    requestId,
+    error: message,
+  });
+}
 
 /**
  * Perception Endpoint
@@ -57,11 +94,18 @@ app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunctio
     });
 
     // 1. Persist/Update Session
-    await supabase.from('sessions').upsert({
-      session_id: payload.session_id,
-      last_seen_at: new Date().toISOString(),
-      user_agent: req.headers['user-agent']
-    }, { onConflict: 'session_id' });
+    try {
+      const { error } = await supabase.from('sessions').upsert({
+        session_id: payload.session_id,
+        last_seen_at: new Date().toISOString(),
+        user_agent: req.headers['user-agent']
+      }, { onConflict: 'session_id' });
+      if (error) {
+        logPersistenceWarning('Session upsert', error, requestId);
+      }
+    } catch (error) {
+      logPersistenceWarning('Session upsert', error, requestId);
+    }
     await emitReasoningEvent(payload.session_id, {
       actor: 'perception',
       stage: 'analyze',
@@ -78,41 +122,56 @@ app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunctio
     // Using Buffer.from to convert base64 image data. Buffer is now imported from 'buffer'.
     const imageBuffer = Buffer.from(payload.image.base64, 'base64');
     const fileName = `${payload.session_id}/${requestId}.png`;
-    
-    const { error: uploadError } = await supabase.storage
-      .from('screenshots')
-      .upload(fileName, imageBuffer, {
-        contentType: 'image/png',
-        upsert: true
+    let publicUrl: string | null = null;
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('screenshots')
+        .upload(fileName, imageBuffer, {
+          contentType: 'image/png',
+          upsert: true
+        });
+
+      if (uploadError) {
+        logPersistenceWarning('Screenshot upload', uploadError, requestId);
+      } else {
+        await emitReasoningEvent(payload.session_id, {
+          actor: 'executor',
+          stage: 'submit',
+          status: 'completed',
+          summary: 'Frame persisted to storage for replay and artifact review.',
+          details: {
+            requestId,
+            file_name: fileName,
+          },
+          artifact_ref: fileName,
+        });
+
+        const { data } = supabase.storage
+          .from('screenshots')
+          .getPublicUrl(fileName);
+        publicUrl = data.publicUrl || null;
+      }
+    } catch (error) {
+      logPersistenceWarning('Screenshot upload', error, requestId);
+    }
+
+    try {
+      const { error } = await supabase.from('screenshots').insert({
+        id: requestId,
+        session_id: payload.session_id,
+        image_url: publicUrl,
+        page_url: payload.page.url,
+        page_title: payload.page.title,
+        captured_at: new Date().toISOString()
       });
+      if (error) {
+        logPersistenceWarning('Screenshot record insert', error, requestId);
+      }
+    } catch (error) {
+      logPersistenceWarning('Screenshot record insert', error, requestId);
+    }
 
-    if (uploadError) throw uploadError;
-    await emitReasoningEvent(payload.session_id, {
-      actor: 'executor',
-      stage: 'submit',
-      status: 'completed',
-      summary: 'Frame persisted to storage for replay and artifact review.',
-      details: {
-        requestId,
-        file_name: fileName,
-      },
-      artifact_ref: fileName,
-    });
-
-    // 3. Get Public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('screenshots')
-      .getPublicUrl(fileName);
-
-    // 4. Save Screenshot Record
-    await supabase.from('screenshots').insert({
-      id: requestId,
-      session_id: payload.session_id,
-      image_url: publicUrl,
-      page_url: payload.page.url,
-      page_title: payload.page.title,
-      captured_at: new Date().toISOString()
-    });
     await emitReasoningEvent(payload.session_id, {
       actor: 'planner',
       stage: 'analyze',
@@ -122,7 +181,7 @@ app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunctio
         requestId,
         image_url: publicUrl,
       },
-      artifact_ref: publicUrl,
+      artifact_ref: publicUrl ?? requestId,
     });
 
     // 5. Get AI Guidance
@@ -170,14 +229,21 @@ app.post('/v1/screenshot', async (req: Request, res: Response, next: NextFunctio
     }
 
     // 6. Save Guidance Event
-    await supabase.from('guidance_events').insert({
-      id: uuidv4(),
-      session_id: payload.session_id,
-      instruction: guidance.overlay.text,
-      highlighted_text: guidance.overlay.highlight?.textMatch,
-      voice_text: guidance.voice?.text,
-      created_at: new Date().toISOString()
-    });
+    try {
+      const { error } = await supabase.from('guidance_events').insert({
+        id: uuidv4(),
+        session_id: payload.session_id,
+        instruction: guidance.overlay.text,
+        highlighted_text: guidance.overlay.highlight?.textMatch,
+        voice_text: guidance.voice?.text,
+        created_at: new Date().toISOString()
+      });
+      if (error) {
+        logPersistenceWarning('Guidance event insert', error, requestId);
+      }
+    } catch (error) {
+      logPersistenceWarning('Guidance event insert', error, requestId);
+    }
     await emitReasoningEvent(payload.session_id, {
       actor: 'executor',
       stage: 'respond',
